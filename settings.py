@@ -17,8 +17,8 @@ NEIGHBORHOOD_SIZE = 1500  # Size of local vocabulary for 3D visualization
 BASIS_WORD_COUNT = 8  # Number of basis words to suggest from neighbors
 
 # UMAP parameters for 3D visualization
-UMAP_N_NEIGHBORS = 25
-UMAP_MIN_DIST = 0.05
+UMAP_N_NEIGHBORS = 15
+UMAP_MIN_DIST = 0.1
 UMAP_METRIC = "cosine"
 
 # Slider settings

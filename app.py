@@ -450,7 +450,13 @@ def main():
             X = np.vstack([X, mixed_vector.reshape(1, -1)])
             word_labels.append("🎯 CURRENT MIX")
         
-        if st.session_state.get('umap_embedding') is None or rebuild_3d:
+        # Create a hash of the current word mix to detect changes
+        current_mix_hash = hash(tuple(sorted(weights.items())))
+        
+        if (st.session_state.get('umap_embedding') is None or 
+            rebuild_3d or 
+            st.session_state.get('last_mix_hash') != current_mix_hash):
+            
             with st.spinner("Computing 3D embedding..."):
                 reducer = umap.UMAP(
                     n_components=3,
@@ -461,6 +467,7 @@ def main():
                 )
                 embedding_3d = reducer.fit_transform(X)
                 st.session_state['umap_embedding'] = embedding_3d
+                st.session_state['last_mix_hash'] = current_mix_hash
         
         embedding_3d = st.session_state['umap_embedding']
         
