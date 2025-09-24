@@ -65,6 +65,57 @@ def get_random_direction_words(model, word: str, weirdness: float) -> Tuple[str,
     except:
         return "N/A", "N/A", "N/A"
 
+def filter_conjugations_plurals(neighbors: List[Tuple[str, float]], target_count: int) -> List[Tuple[str, float]]:
+    """Filter out conjugations and plurals of words."""
+    filtered = []
+    seen_roots = set()
+    
+    for word, score in neighbors:
+        word_lower = word.lower()
+        
+        # Common plural endings
+        if word_lower.endswith(('s', 'es', 'ies')):
+            # Try to find the root word
+            root = word_lower
+            if word_lower.endswith('ies'):
+                root = word_lower[:-3] + 'y'
+            elif word_lower.endswith('es'):
+                root = word_lower[:-2]
+            elif word_lower.endswith('s') and len(word_lower) > 3:
+                root = word_lower[:-1]
+            
+            # Skip if we've already seen this root
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+        
+        # Common verb conjugations
+        elif word_lower.endswith(('ing', 'ed', 'er', 'est')):
+            # Try to find the root word
+            root = word_lower
+            if word_lower.endswith('ing'):
+                root = word_lower[:-3]
+            elif word_lower.endswith('ed'):
+                root = word_lower[:-2]
+            elif word_lower.endswith('er'):
+                root = word_lower[:-2]
+            elif word_lower.endswith('est'):
+                root = word_lower[:-3]
+            
+            # Skip if we've already seen this root
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+        
+        # Add the word and mark its root as seen
+        filtered.append((word, score))
+        seen_roots.add(word_lower)
+        
+        if len(filtered) >= target_count:
+            break
+    
+    return filtered
+
 def filter_proper_nouns(neighbors: List[Tuple[str, float]], target_count: int) -> List[Tuple[str, float]]:
     """Filter out names and websites while keeping cities and other proper nouns."""
     filtered = []
@@ -210,6 +261,12 @@ def main():
             help="Exclude base word and mixer words with non-zero weights from results"
         )
         
+        suppress_conjugations = st.checkbox(
+            "Suppress Conjugations & Plurals", 
+            value=False,
+            help="Filter out conjugations (running, walked) and plurals (kings, queens) to show only root words"
+        )
+        
         look_around = st.checkbox(
             "Look Around", 
             value=False,
@@ -228,6 +285,17 @@ def main():
             )
         else:
             weirdness = 1.0  # Default value when not shown
+        
+        # Reset Mix button
+        if st.button("🔄 Reset Mix", type="secondary", help="Reset all sliders to 0"):
+            # Clear all slider values from session state
+            for key in list(st.session_state.keys()):
+                if key.startswith('slider_'):
+                    del st.session_state[key]
+            # Also clear the weights dictionary
+            if 'weights' in st.session_state:
+                del st.session_state['weights']
+            st.rerun()
         
         if show_3d:
             rebuild_3d = st.button("🔄 Rebuild 3D Neighborhood", type="secondary")
@@ -279,6 +347,14 @@ def main():
     # Create sliders for base word and basis words
     weights = {}
     
+    # Initialize weights from session state if available, but only if base word hasn't changed
+    if 'weights' in st.session_state and st.session_state.get('last_base_word') == base_word:
+        weights = st.session_state['weights'].copy()
+    else:
+        # Clear weights if base word changed
+        weights = {}
+        st.session_state['last_base_word'] = base_word
+    
     # Base word slider
     weights[base_word] = st.slider(
         f"**{base_word}** (base)",
@@ -299,16 +375,12 @@ def main():
     for i, word in enumerate(basis_candidates):
         col_idx = i % num_cols
         with cols[col_idx]:
-            # Check if the word is valid for the label
-            is_valid = word in model.vocab if word else False
-            label = f"Word {i+1} ❌" if not is_valid else f"Word {i+1}"
-            
             # Editable word input
             edited_word = st.text_input(
-                label,
+                "",
                 value=word,
                 key=f"word_{i}",
-                help="Edit this word (must be in vocabulary)"
+                help="Enter a word here and adjust its weight using the slider below"
             ).lower().strip()
             
             if edited_word and edited_word not in model.vocab:
@@ -323,14 +395,16 @@ def main():
             current_weight = weights.get(edited_word, 0.0)
             
             weights[edited_word] = st.slider(
-                f"**{edited_word}**",
+                "",
                 min_value=SLIDER_MIN,
                 max_value=SLIDER_MAX,
                 value=current_weight,
                 step=SLIDER_STEP,
-                key=f"slider_{i}",
-                help=f"Weight for basis word '{edited_word}'"
+                key=f"slider_{i}"
             )
+    
+    # Save weights to session state
+    st.session_state['weights'] = weights.copy()
     
     # Compute mixed vector
     weighted_words = [(word, weight) for word, weight in weights.items()]
@@ -367,6 +441,9 @@ def main():
             
             if suppress_proper_nouns:
                 filtered_neighbors = filter_proper_nouns(filtered_neighbors, neighbor_count)
+            
+            if suppress_conjugations:
+                filtered_neighbors = filter_conjugations_plurals(filtered_neighbors, neighbor_count)
             
             if filtered_neighbors:
                 # Create the basic dataframe
@@ -419,8 +496,8 @@ def main():
         
         if 'local_words' not in st.session_state or rebuild_3d or st.session_state.get('base_word') != base_word:
             with st.spinner("Building 3D neighborhood..."):
-                anchors = [base_word] + basis_candidates[:5]
-                local_words = model.local_vocab(anchors, NEIGHBORHOOD_SIZE)
+                # Use just the base word to build a more unified neighborhood
+                local_words = model.local_vocab([base_word], NEIGHBORHOOD_SIZE)
                 
                 st.session_state['local_words'] = local_words
                 st.session_state['base_word'] = base_word
