@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Large embedding files (users need to download these separately)
+*.bin
+*.bin.gz
+*.vec
+*.vec.zip
+glove.6B.300d.txt
+GoogleNews-vectors-negative300.bin
+crawl-300d-2M.vec
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*_backup.py
+*_final.py
+*_new.py
+*_fixed.py
+app_mixing_board.py
+app_results_first.py
+app_top_results.py

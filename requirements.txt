@@ -1,0 +1,8 @@
+numpy
+gensim
+streamlit
+plotly
+umap-learn
+faiss-cpu; sys_platform != "darwin" or platform_machine != "arm64"
+
+
