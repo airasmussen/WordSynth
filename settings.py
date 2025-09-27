@@ -13,7 +13,7 @@ IS_BINARY = True  # True for .bin files, False for .txt/.vec files
 
 # UI and performance settings
 TOPN_DEFAULT = 25  # Default number of nearest neighbors to show
-NEIGHBORHOOD_SIZE = 1500  # Size of local vocabulary for 3D visualization
+NEIGHBORHOOD_SIZE = 500  # Size of local vocabulary for 3D visualization
 BASIS_WORD_COUNT = 8  # Number of basis words to suggest from neighbors
 
 # UMAP parameters for 3D visualization

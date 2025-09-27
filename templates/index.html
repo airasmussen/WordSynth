@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Synthesizer - Visual Word Embedding Explorer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">🔤 Word Synthesizer</h1>
+                <p class="app-subtitle">Visual Word Embedding Explorer</p>
+            </div>
+            <div class="model-info" id="modelInfo">
+                <span class="model-status">Loading model...</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>🎛️ Controls</h3>
+                    
+                    <!-- Model Selection -->
+                    <div class="control-group">
+                        <label for="modelSelect">📚 Model</label>
+                        <select id="modelSelect" class="control-input">
+                            <option value="GoogleNews">GoogleNews</option>
+                            <option value="GloVe">GloVe</option>
+                        </select>
+                    </div>
+
+                    <!-- Base Word Input -->
+                    <div class="control-group">
+                        <label for="baseWordInput">Base Word</label>
+                        <input type="text" id="baseWordInput" class="control-input" value="king" placeholder="Enter a word...">
+                        <div class="word-status" id="wordStatus"></div>
+                    </div>
+
+                    <!-- Visualization Options -->
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="show3D" checked> 3D Neighborhood View
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="progressiveLoading" checked> ⚡ Progressive Loading
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="enableSpeech" checked> 🔊 Speak Words on Hover
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <button id="rebuild3D" class="btn btn-secondary">🔄 Rebuild 3D Neighborhood</button>
+                    </div>
+
+                    <!-- Neighbor Count -->
+                    <div class="control-group">
+                        <label for="neighborCount">Neighbors to Show</label>
+                        <input type="range" id="neighborCount" class="slider" min="5" max="50" value="8">
+                        <span class="slider-value" id="neighborCountValue">8</span>
+                    </div>
+
+                    <!-- Basis Count -->
+                    <div class="control-group">
+                        <label for="basisCount">Basis Words</label>
+                        <input type="range" id="basisCount" class="slider" min="3" max="15" value="8">
+                        <span class="slider-value" id="basisCountValue">8</span>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="control-group">
+                        <h4>🔍 Filters</h4>
+                        <label>
+                            <input type="checkbox" id="suppressProperNouns" checked> Suppress Names & Websites
+                        </label>
+                        <label>
+                            <input type="checkbox" id="suppressMixerWords" checked> Suppress Base & Mixer Words
+                        </label>
+                        <label>
+                            <input type="checkbox" id="suppressConjugations"> Suppress Conjugations & Plurals
+                        </label>
+                        <label>
+                            <input type="checkbox" id="lookAround"> Look Around
+                        </label>
+                    </div>
+
+                    <!-- Weirdness (only shown when Look Around is checked) -->
+                    <div class="control-group" id="weirdnessGroup" style="display: none;">
+                        <label for="weirdness">Weirdness</label>
+                        <input type="range" id="weirdness" class="slider" min="0.1" max="2.0" step="0.1" value="1.0">
+                        <span class="slider-value" id="weirdnessValue">1.0</span>
+                    </div>
+
+                    <!-- Reset Button -->
+                    <div class="control-group">
+                        <button id="resetMix" class="btn btn-secondary">🔄 Reset Mix</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="content">
+                <!-- 3D Visualization -->
+                <section class="visualization-section" id="visualizationSection">
+                    <h2>🌐 3D Semantic Neighborhood</h2>
+                    <div class="viz-container">
+                        <div id="plot3D" class="plot-container"></div>
+                    </div>
+                    <div class="viz-info" id="vizInfo">Loading 3D visualization...</div>
+                </section>
+
+                <!-- Mixing Board -->
+                <section class="mixing-section">
+                    <h2>🎚️ Mixing Board</h2>
+                    <div class="mixing-board" id="mixingBoard">
+                        <div class="loading">Loading mixing controls...</div>
+                    </div>
+                </section>
+
+                <!-- Results -->
+                <section class="results-section">
+                    <h2>🎯 Nearest Neighbors</h2>
+                    <div class="results-container">
+                        <div class="loading" id="resultsLoading">Set some non-zero weights to see results!</div>
+                        <div id="resultsTable" class="results-table" style="display: none;"></div>
+                        <div class="results-actions" id="resultsActions" style="display: none;">
+                            <button id="downloadCSV" class="btn btn-primary">📋 Download CSV</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <h3>📄 License Information</h3>
+                <div class="license-info">
+                    <p><strong>GoogleNews Word2Vec:</strong> Free for research and commercial use</p>
+                    <p><strong>GloVe:</strong> Apache 2.0 License - Stanford NLP Group</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/threejs-visualization.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/visualization.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

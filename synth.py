@@ -261,13 +261,18 @@ class SynthModel:
         for anchor in anchors:
             if anchor in self.vocab:
                 neighbors = self.nearest(self.model[anchor], topn=k//len(anchors))
-                all_neighbors.update([word for word, _ in neighbors])
+                # Only add words that are actually in the vocabulary
+                for word, _ in neighbors:
+                    if word in self.vocab:
+                        all_neighbors.add(word)
         
-        # Add anchors themselves
-        all_neighbors.update(anchors)
+        # Add anchors themselves (only if they're in vocab)
+        for anchor in anchors:
+            if anchor in self.vocab:
+                all_neighbors.add(anchor)
         
-        # Convert to list and limit size
-        vocab_list = list(all_neighbors)[:k]
+        # Convert to list - use ALL unique neighbors found, don't artificially limit
+        vocab_list = list(all_neighbors)
         return vocab_list
     
     def directions_from_pairs(self, pairs: List[Tuple[str, str]]) -> np.ndarray:
