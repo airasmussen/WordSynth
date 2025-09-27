@@ -18,6 +18,20 @@ class ThreeJSVisualization {
         this.mouse = new THREE.Vector2();
         this.clickHandler = null;
         this.hoverHandler = null;
+        this.cameraTranslated = false; // Track if camera has been translated by user
+        this.isPanning = false; // Track if currently panning
+        
+        // Create a debug wrapper for cameraTranslated
+        let _cameraTranslated = false;
+        Object.defineProperty(this, 'cameraTranslated', {
+            get: function() {
+                return _cameraTranslated;
+            },
+            set: function(value) {
+                console.log('cameraTranslated changed from', _cameraTranslated, 'to', value, 'Stack trace:', new Error().stack);
+                _cameraTranslated = value;
+            }
+        });
         
         this.initialize();
     }
@@ -49,12 +63,23 @@ class ThreeJSVisualization {
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
-        this.controls.enableZoom = false; // Disable zoom, we'll handle wheel differently
+        this.controls.enableZoom = false; // Completely disable zoom, we'll handle wheel differently
         this.controls.enablePan = true;
         
-        // Remove zoom restrictions
+        // Configure mouse buttons - LEFT for rotate, MIDDLE for pan
+        this.controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.PAN,
+            RIGHT: THREE.MOUSE.PAN
+        };
+        
+        // Completely remove zoom restrictions and disable zoom functionality
         this.controls.minDistance = 0;
         this.controls.maxDistance = Infinity;
+        this.controls.enableKeys = false; // Disable keyboard controls that might interfere
+        
+        // Track camera translation (panning) to remove wheel distance restrictions
+        this.setupCameraTranslationTracking();
         
         // Custom wheel behavior for camera movement instead of zoom
         this.setupCustomWheelBehavior();
@@ -154,11 +179,37 @@ class ThreeJSVisualization {
     }
 
     /**
+     * Setup camera translation tracking to detect when user has panned the camera
+     */
+    setupCameraTranslationTracking() {
+        // Store initial camera position and target
+        this.initialCameraPosition = this.camera.position.clone();
+        this.initialCameraTarget = this.controls.target.clone();
+        
+        // Track command key state globally
+        this.commandKeyDown = false;
+        this.lastCommandKeyTime = null;
+        
+        // Simple approach: set translation mode when command key goes down
+        const handleKeyDown = (event) => {
+            if (event.metaKey || event.ctrlKey || event.key === 'Meta' || event.key === 'Control') {
+                console.log('*** COMMAND KEY DOWN - SETTING TRANSLATION MODE! ***');
+                this.cameraTranslated = true;
+            }
+        };
+        
+        // Add global key listener
+        window.addEventListener('keydown', handleKeyDown, true);
+    }
+
+    /**
      * Setup custom wheel behavior for camera movement instead of zoom
      */
     setupCustomWheelBehavior() {
         this.renderer.domElement.addEventListener('wheel', (event) => {
+            console.log('Wheel event - cameraTranslated:', this.cameraTranslated);
             event.preventDefault();
+            event.stopPropagation();
             
             // Calculate movement direction based on camera's current orientation
             const direction = new THREE.Vector3();
@@ -172,12 +223,28 @@ class ThreeJSVisualization {
             const movement = direction.multiplyScalar(delta);
             const newPosition = this.camera.position.clone().add(movement);
             
-            // Check distance to orbit target
-            const distanceToTarget = newPosition.distanceTo(this.controls.target);
-            const minDistance = 0.5; // Minimum distance to prevent getting too close
-            
-            // Only move if we're not getting too close to the target
-            if (distanceToTarget >= minDistance) {
+            // Apply different restrictions based on camera state
+            if (!this.cameraTranslated) {
+                console.log('Orbit mode - applying distance restrictions');
+                // When orbiting, maintain a safe distance from the target
+                const currentDistance = this.camera.position.distanceTo(this.controls.target);
+                const newDistance = newPosition.distanceTo(this.controls.target);
+                const minDistance = 0.2; // Very close minimum distance - can get very close to words
+                
+                // Only allow movement if:
+                // 1. We're moving away from the target (increasing distance), OR
+                // 2. We're moving toward the target but would still be above the minimum distance
+                const isMovingAway = newDistance > currentDistance;
+                const wouldStayAboveMin = newDistance >= minDistance;
+                
+                if (isMovingAway || wouldStayAboveMin) {
+                    this.camera.position.copy(newPosition);
+                    this.controls.update();
+                }
+                // If we would get too close, do absolutely nothing - hard stop (no jittering, no flashing)
+            } else {
+                console.log('Translated mode - allowing free movement');
+                // When translated, NO distance restrictions - allow completely free movement
                 this.camera.position.copy(newPosition);
                 this.controls.update();
             }
@@ -662,6 +729,8 @@ class ThreeJSVisualization {
         // Reduce the camera distance for better zoom level
         const cameraDistance = Math.abs(maxDim / Math.sin(fov / 2)) * 0.8; // Reduced from 1.5 to 0.8
         
+        // Don't reset camera translation state here - this is automatic positioning
+        
         this.camera.position.set(
             center.x + cameraDistance,
             center.y + cameraDistance,
@@ -669,6 +738,11 @@ class ThreeJSVisualization {
         );
         this.camera.lookAt(center);
         this.controls.target.copy(center);
+        
+        // Update initial positions for translation tracking
+        this.initialCameraPosition = this.camera.position.clone();
+        this.initialCameraTarget = this.controls.target.clone();
+        
         this.controls.update();
     }
 
@@ -679,6 +753,8 @@ class ThreeJSVisualization {
         if (!baseWordPoint) return;
 
         const basePosition = new THREE.Vector3(baseWordPoint.x, baseWordPoint.y, baseWordPoint.z);
+        
+        // Don't reset camera translation state here - this is automatic positioning
         
         // Set camera to look at the base word
         this.camera.lookAt(basePosition);
@@ -691,6 +767,10 @@ class ThreeJSVisualization {
             basePosition.y + cameraDistance,
             basePosition.z + cameraDistance
         );
+        
+        // Update initial positions for translation tracking
+        this.initialCameraPosition = this.camera.position.clone();
+        this.initialCameraTarget = this.controls.target.clone();
         
         this.controls.update();
     }
@@ -749,6 +829,12 @@ class ThreeJSVisualization {
             const clickedObject = intersects[0].object;
             const word = this.findWordBySphere(clickedObject);
             if (word && this.clickHandler) {
+                // Reset camera translation state when user double-clicks to change base word
+                console.log('*** DOUBLE-CLICK - RESETTING TO ORBIT MODE! ***');
+                this.cameraTranslated = false;
+                this.initialCameraPosition = this.camera.position.clone();
+                this.initialCameraTarget = new THREE.Vector3(clickedObject.position.x, clickedObject.position.y, clickedObject.position.z);
+                
                 this.clickHandler(word);
             }
         }
@@ -762,6 +848,13 @@ class ThreeJSVisualization {
         if (!wordData) return;
 
         const targetPosition = new THREE.Vector3(wordData.point.x, wordData.point.y, wordData.point.z);
+        
+        // Reset camera translation state when pointing at a word (single click)
+        // This ensures distance restrictions work properly
+        console.log('*** SINGLE CLICK - RESETTING TO ORBIT MODE! ***');
+        this.cameraTranslated = false;
+        this.initialCameraPosition = this.camera.position.clone();
+        this.initialCameraTarget = targetPosition.clone();
         
         // Just change the orbit target, keep camera position the same
         this.animateCameraTarget(targetPosition);
