@@ -16,8 +16,8 @@ TOPN_DEFAULT = 25  # Default number of nearest neighbors to show
 NEIGHBORHOOD_SIZE = 500  # Size of local vocabulary for 3D visualization
 BASIS_WORD_COUNT = 8  # Number of basis words to suggest from neighbors
 
-# UMAP parameters for 3D visualization
-UMAP_N_NEIGHBORS = 15
+# UMAP parameters for 3D visualization (optimized for speed)
+UMAP_N_NEIGHBORS = 10  # Reduced from 15 for faster computation
 UMAP_MIN_DIST = 0.1
 UMAP_METRIC = "cosine"
 

@@ -128,39 +128,194 @@ class ThreeJSVisualization {
     }
 
     /**
-     * Setup grid and axes for the scene
+     * Setup three-sided grid planes for the scene (similar to Streamlit style)
      */
     setupGridAndAxes() {
-        // Create a grid helper
-        const gridSize = 20;
-        const gridDivisions = 20;
-        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x444444, 0x222222);
-        this.scene.add(gridHelper);
-
-        // Create axes helper
-        const axesHelper = new THREE.AxesHelper(5);
-        this.scene.add(axesHelper);
-
-        // Add axis labels
-        this.addAxisLabels();
+        // Create three custom grid planes that form a proper corner
+        this.createCornerGrids();
     }
 
     /**
-     * Add axis labels to the scene
+     * Create custom grid planes that form a proper corner
      */
-    addAxisLabels() {
-        // X-axis label
-        const xLabel = this.createTextMesh('X', new THREE.Vector3(6, 0, 0), 0x888888, 0.3);
-        this.scene.add(xLabel);
-
-        // Y-axis label
-        const yLabel = this.createTextMesh('Y', new THREE.Vector3(0, 6, 0), 0x888888, 0.3);
-        this.scene.add(yLabel);
-
-        // Z-axis label
-        const zLabel = this.createTextMesh('Z', new THREE.Vector3(0, 0, 6), 0x888888, 0.3);
-        this.scene.add(zLabel);
+    createCornerGrids() {
+        // Origin point away from where the cloud will be (bottom-left-back corner)
+        const originX = -6;
+        const originY = -6;
+        const originZ = -6;
+        
+        const gridSize = 12; // Size of each grid (increased by 50% from 8)
+        const gridDivisions = 12;
+        
+        // Gray colors with brighter origin edges
+        const gridColor = 0x444444;    // Dark gray for grid lines
+        const axisColor = 0x666666;    // Brighter gray for center axis edges
+        const originColor = 0x888888;  // Brightest gray for origin edges
+        
+        // XY plane (floor) - GRAY
+        const xyGrid = this.createCornerGrid(gridSize, gridDivisions, gridColor, axisColor, 'XY');
+        xyGrid.position.set(originX, originY, originZ);
+        xyGrid.rotation.set(0, 0, 0);
+        this.scene.add(xyGrid);
+        
+        // YZ plane (left wall) - GRAY
+        const yzLeftGrid = this.createCornerGrid(gridSize, gridDivisions, gridColor, axisColor, 'YZ');
+        yzLeftGrid.position.set(originX, originY, originZ);
+        yzLeftGrid.rotation.set(0, 0, 0);
+        this.scene.add(yzLeftGrid);
+        
+        // YZ plane (right wall) - GRAY
+        const yzRightGrid = this.createCornerGrid(gridSize, gridDivisions, gridColor, axisColor, 'YZ');
+        yzRightGrid.position.set(originX + gridSize, originY, originZ);
+        yzRightGrid.rotation.set(0, 0, Math.PI/2);
+        this.scene.add(yzRightGrid);
     }
+
+    /**
+     * Create a custom grid geometry that extends from origin toward the cloud
+     */
+    createCornerGrid(size, divisions, color, centerColor, plane) {
+        const originColor = 0x888888; // Brightest gray for origin edges
+        const gridGroup = new THREE.Group();
+        
+        // Create grid lines
+        const step = size / divisions;
+        
+        if (plane === 'XY') {
+            // XY plane: vertical lines (along Y) and horizontal lines (along X)
+            // Vertical lines
+            for (let i = 0; i <= divisions; i++) {
+                const x = i * step;
+                const isCenter = i === divisions / 2;
+                // Don't make vertical lines bright on floor - only horizontal Y=0 line should be bright
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(x, 0, 0),
+                    new THREE.Vector3(x, size, 0)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+            
+            // Horizontal lines
+            for (let i = 0; i <= divisions; i++) {
+                const y = i * step;
+                const isCenter = i === divisions / 2;
+                const isOrigin = i === 0; // First line touches origin
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, y, 0),
+                    new THREE.Vector3(size, y, 0)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: isOrigin ? originColor : color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+        } else if (plane === 'XZ') {
+            // XZ plane: vertical lines (along Z) and horizontal lines (along X)
+            // Vertical lines
+            for (let i = 0; i <= divisions; i++) {
+                const x = i * step;
+                const isCenter = i === divisions / 2;
+                const isOrigin = i === 0; // First line touches origin
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(x, 0, 0),
+                    new THREE.Vector3(x, 0, size)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: isOrigin ? originColor : color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+            
+            // Horizontal lines
+            for (let i = 0; i <= divisions; i++) {
+                const z = i * step;
+                const isCenter = i === divisions / 2;
+                const isOrigin = i === 0; // First line touches origin
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, z),
+                    new THREE.Vector3(size, 0, z)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: isOrigin ? originColor : color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+        } else if (plane === 'YZ') {
+            // YZ plane: vertical lines (along Z) and horizontal lines (along Y)
+            // Vertical lines
+            for (let i = 0; i <= divisions; i++) {
+                const y = i * step;
+                const isCenter = i === divisions / 2;
+                const isOrigin = i === 0; // First line touches origin
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, y, 0),
+                    new THREE.Vector3(0, y, size)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: isOrigin ? originColor : color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+            
+            // Horizontal lines
+            for (let i = 0; i <= divisions; i++) {
+                const z = i * step;
+                const isCenter = i === divisions / 2;
+                const isOrigin = i === 0; // First line touches origin
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, z),
+                    new THREE.Vector3(0, size, z)
+                ]);
+                
+                const material = new THREE.LineBasicMaterial({ 
+                    color: isOrigin ? originColor : color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                gridGroup.add(line);
+            }
+        }
+        
+        return gridGroup;
+    }
+
+
 
     /**
      * Setup event listeners for mouse interactions
@@ -379,8 +534,8 @@ class ThreeJSVisualization {
 
         const points = data.points;
         const baseWordPoint = points.find(p => p.is_base);
-        const otherWords = points.filter(p => !p.is_base && !p.is_current_mix);
-        const currentMixPoint = points.find(p => p.is_current_mix);
+        const otherWords = points.filter(p => !p.is_base && !p.is_mix);
+        const currentMixPoint = points.find(p => p.is_mix);
 
         // Create base word
         if (baseWordPoint) {
@@ -411,8 +566,8 @@ class ThreeJSVisualization {
 
         const points = data.points;
         const baseWordPoint = points.find(p => p.is_base);
-        const otherWords = points.filter(p => !p.is_base && !p.is_current_mix);
-        const currentMixPoint = points.find(p => p.is_current_mix);
+        const otherWords = points.filter(p => !p.is_base && !p.is_mix);
+        const currentMixPoint = points.find(p => p.is_mix);
 
         // Create base word (only if not already exists)
         if (baseWordPoint && !this.wordObjects.has(baseWordPoint.word)) {
@@ -448,8 +603,8 @@ class ThreeJSVisualization {
 
         const points = data.points;
         const baseWordPoint = points.find(p => p.is_base);
-        const otherWords = points.filter(p => !p.is_base && !p.is_current_mix);
-        const currentMixPoint = points.find(p => p.is_current_mix);
+        const otherWords = points.filter(p => !p.is_base && !p.is_mix);
+        const currentMixPoint = points.find(p => p.is_mix);
 
         // Get the position of the existing base word
         const existingBaseWordObj = this.wordObjects.get(existingBaseWord);
@@ -558,6 +713,9 @@ class ThreeJSVisualization {
         // Store reference
         this.wordObjects.set(point.word, { sphere, text: textMesh, point });
         this.currentBaseWord = point.word;
+        
+        // Clear any remaining glow spheres when creating new base word
+        this.clearAllGlowSpheres();
     }
 
     /**
@@ -611,19 +769,45 @@ class ThreeJSVisualization {
     createCurrentMixPoint(point) {
         const position = new THREE.Vector3(point.x, point.y, point.z);
         
-        // Create smaller, distinctive sphere (transparent)
-        const sphere = this.createWordSphere(position, 0xff6b6b, 0.05);
-        this.scene.add(sphere);
+        // Create large, prominent purple cube for current mix
+        const cubeGeometry = new THREE.BoxGeometry(0.15, 0.15, 0.15); // Much larger
+        const cubeMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xFF00FF, // Bright magenta/purple
+            transparent: true,
+            opacity: 0.9
+        });
+        const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        cube.position.copy(position);
+        cube.castShadow = false;
+        cube.receiveShadow = false;
+        this.scene.add(cube);
         
-        // Create text (centered on sphere)
-        const textMesh = this.createTextMesh('🎯 MIX', 
-            new THREE.Vector3(position.x, position.y, position.z), 
-            0xff6b6b, 0.6);
-        textMesh.renderOrder = 1; // Render after sphere
+        // Add a bright glow effect around the cube
+        const glowGeometry = new THREE.BoxGeometry(0.25, 0.25, 0.25); // Even larger glow
+        const glowMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xFF00FF, // Same bright magenta
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.BackSide // Render from inside to create glow
+        });
+        const glowCube = new THREE.Mesh(glowGeometry, glowMaterial);
+        glowCube.position.copy(position);
+        this.scene.add(glowCube);
+        
+        // Create large, bold text
+        const textMesh = this.createTextMesh('🎯 CURRENT MIX', 
+            new THREE.Vector3(position.x, position.y + 0.2, position.z), // Position above cube
+            0xFF00FF, 0.8); // Larger, brighter text
+        textMesh.renderOrder = 1; // Render after cube
         this.scene.add(textMesh);
         
-        // Store reference
-        this.wordObjects.set('current_mix', { sphere, text: textMesh, point });
+        // Store reference (including glow)
+        this.wordObjects.set('current_mix', { 
+            sphere: cube, 
+            text: textMesh, 
+            point,
+            glow: glowCube
+        });
         this.currentMixPoint = point;
     }
 
@@ -631,13 +815,52 @@ class ThreeJSVisualization {
      * Clear all word objects from the scene
      */
     clearWordObjects() {
-        this.wordObjects.forEach(({ sphere, text }) => {
+        this.wordObjects.forEach(({ sphere, text, glow }) => {
             this.scene.remove(sphere);
             this.scene.remove(text);
+            if (glow) {
+                if (glow.inner) {
+                    // New structure with inner and outer glow
+                    this.scene.remove(glow.inner);
+                    this.scene.remove(glow.outer);
+                } else {
+                    // Old structure with single glow
+                    this.scene.remove(glow);
+                }
+            }
         });
         this.wordObjects.clear();
         this.currentBaseWord = null;
         this.currentMixPoint = null;
+        
+        // Aggressively remove any remaining glow spheres
+        this.clearAllGlowSpheres();
+    }
+    
+    /**
+     * Aggressively clear all glow spheres from the scene
+     */
+    clearAllGlowSpheres() {
+        const objectsToRemove = [];
+        this.scene.traverse((object) => {
+            // Look for glow spheres by checking if they have the glow material properties
+            if (object.isMesh && object.material && 
+                object.material.transparent && 
+                object.material.opacity < 1.0 && 
+                object.geometry && 
+                (object.geometry.type === 'SphereGeometry' || object.geometry.type === 'BoxGeometry')) {
+                // Check if it's likely a glow sphere (transparent, low opacity)
+                if (object.material.opacity <= 0.5) {
+                    objectsToRemove.push(object);
+                }
+            }
+        });
+        
+        objectsToRemove.forEach(obj => {
+            this.scene.remove(obj);
+        });
+        
+        console.log(`Cleared ${objectsToRemove.length} orphaned glow spheres`);
     }
 
     /**
@@ -667,6 +890,11 @@ class ThreeJSVisualization {
         wordsToRemove.forEach(word => {
             this.wordObjects.delete(word);
         });
+        
+        // Aggressively remove any remaining glow spheres when changing base word
+        if (keepWord && keepWord !== this.currentBaseWord) {
+            this.clearAllGlowSpheres();
+        }
         
         // Update the kept word to be the base word (make it red)
         if (keepWord && this.wordObjects.has(keepWord)) {
@@ -707,6 +935,9 @@ class ThreeJSVisualization {
             }
             
             this.currentBaseWord = keepWord;
+            
+            // Clear any remaining glow spheres when base word changes
+            this.clearAllGlowSpheres();
         }
     }
 
@@ -834,6 +1065,9 @@ class ThreeJSVisualization {
                 this.cameraTranslated = false;
                 this.initialCameraPosition = this.camera.position.clone();
                 this.initialCameraTarget = new THREE.Vector3(clickedObject.position.x, clickedObject.position.y, clickedObject.position.z);
+                
+                // Center camera on the clicked word (like single click does)
+                this.pointCameraAtWord(word);
                 
                 this.clickHandler(word);
             }

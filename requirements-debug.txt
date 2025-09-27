@@ -1,0 +1,5 @@
+# Debugging dependencies for WordSynth
+playwright>=1.40.0
+pytest>=7.0.0
+pytest-playwright>=0.4.0
+requests>=2.28.0

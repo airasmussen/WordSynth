@@ -6,8 +6,12 @@ Converted from Streamlit to Flask + Plotly.js for better performance and control
 """
 
 import os
-# Set Numba threading configuration BEFORE importing any Numba-dependent libraries
+# Set conservative threading configuration to avoid conflicts
 os.environ['NUMBA_NUM_THREADS'] = '1'  # Force single-threaded Numba
+os.environ['NUMBA_THREADING_LAYER'] = 'omp'  # Use OpenMP threading layer
+os.environ['OMP_NUM_THREADS'] = '1'  # Limit OpenMP threads
+os.environ['MKL_NUM_THREADS'] = '1'  # Limit Intel MKL threads
+os.environ['OPENBLAS_NUM_THREADS'] = '1'  # Limit OpenBLAS threads
 
 from flask import Flask, render_template, request, jsonify
 import numpy as np
@@ -118,24 +122,14 @@ def check_word():
                 word = var  # Update the word to the found variation
                 break
     
-    # If still not found, but the word was displayed in 3D visualization,
-    # it means it exists in some form - let's be more permissive
+    # If still not found, try exact case-insensitive match
     if not exists:
-        # Check if it's a compound word or has special characters
-        # For now, let's allow it if it contains only letters, numbers, underscores, and spaces
-        if all(c.isalnum() or c in '_- ' for c in word):
-            # Try to find the closest match - be more aggressive
-            similar_words = [w for w in model.vocab if word.split('_')[0].lower() in w.lower()][:1]
-            if similar_words:
+        # Try exact match with different case
+        for vocab_word in model.vocab:
+            if vocab_word.lower() == word.lower():
                 exists = True
-                word = similar_words[0]
-            else:
-                # If no similar words found, try exact match with different case
-                for vocab_word in model.vocab:
-                    if vocab_word.lower() == word.lower():
-                        exists = True
-                        word = vocab_word
-                        break
+                word = vocab_word
+                break
     
     return jsonify({'exists': exists, 'word': word})
 
@@ -312,32 +306,54 @@ def filter_proper_nouns(neighbors: List[Tuple[str, float]], target_count: int) -
 
 @app.route('/api/word/neighbors', methods=['POST'])
 def get_neighbors():
-    """Get nearest neighbors for a mixed vector."""
+    """Get nearest neighbors for a mixed vector or a word."""
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
+        
+        # Check if we're getting neighbors for a word or a vector
+        if 'word' in data:
+            # Get neighbors for a word
+            word = data.get('word', '').strip()
+            topn = data.get('topn', TOPN_DEFAULT)
+            filters = data.get('filters', {})
+            exclude_words = data.get('exclude_words', [])
             
-        mixed_vector = np.array(data.get('vector', []))
-        topn = data.get('topn', TOPN_DEFAULT)
-        filters = data.get('filters', {})
-        exclude_words = data.get('exclude_words', [])
-        
-        if model is None:
-            return jsonify({'error': 'No model loaded'}), 400
-        
-        if len(mixed_vector) == 0:
-            return jsonify({'error': 'No vector provided'}), 400
-        
-        # Validate vector dimensions
-        if len(mixed_vector) != model.dimensions:
-            return jsonify({'error': f'Vector dimension mismatch. Expected {model.dimensions}, got {len(mixed_vector)}'}), 400
-        
-        # Get neighbors with error handling
-        try:
-            neighbors = model.nearest(mixed_vector, topn=topn * 3, exclude=set(exclude_words))
-        except Exception as e:
-            return jsonify({'error': f'Failed to find neighbors: {str(e)}'}), 500
+            if model is None:
+                return jsonify({'error': 'No model loaded'}), 400
+            
+            if word not in model.vocab:
+                return jsonify({'error': f'Word "{word}" not in vocabulary'}), 400
+            
+            # Get neighbors for the word
+            try:
+                neighbors = model.nearest(model.model[word], topn=topn * 3, exclude=set(exclude_words))
+            except Exception as e:
+                return jsonify({'error': f'Failed to find neighbors: {str(e)}'}), 500
+            
+        else:
+            # Get neighbors for a mixed vector (original functionality)
+            mixed_vector = np.array(data.get('vector', []))
+            topn = data.get('topn', TOPN_DEFAULT)
+            filters = data.get('filters', {})
+            exclude_words = data.get('exclude_words', [])
+            
+            if model is None:
+                return jsonify({'error': 'No model loaded'}), 400
+            
+            if len(mixed_vector) == 0:
+                return jsonify({'error': 'No vector provided'}), 400
+            
+            # Validate vector dimensions
+            if len(mixed_vector) != model.dimensions:
+                return jsonify({'error': f'Vector dimension mismatch. Expected {model.dimensions}, got {len(mixed_vector)}'}), 400
+            
+            # Get neighbors with error handling
+            try:
+                neighbors = model.nearest(mixed_vector, topn=topn * 3, exclude=set(exclude_words))
+            except Exception as e:
+                return jsonify({'error': f'Failed to find neighbors: {str(e)}'}), 500
         
         if not neighbors:
             return jsonify({
@@ -374,6 +390,7 @@ def get_3d_visualization():
     base_word = data.get('base_word', '').strip()
     mixed_vector = data.get('mixed_vector')  # Optional
     rebuild = data.get('rebuild', False)
+    neighbor_words = data.get('neighbor_words', [])  # List of words that are nearest neighbors
     
     if model is None:
         return jsonify({'error': 'No model loaded'}), 400
@@ -417,7 +434,7 @@ def get_3d_visualization():
         X = np.vstack([X, mixed_array.reshape(1, -1)])
         word_labels.append("🎯 CURRENT MIX")
     
-    # Compute UMAP embedding with threading fixes
+    # Compute UMAP embedding with aggressive threading fixes
     reducer = umap.UMAP(
         n_components=3,
         n_neighbors=UMAP_N_NEIGHBORS,
@@ -425,10 +442,26 @@ def get_3d_visualization():
         metric=UMAP_METRIC,
         random_state=42,
         n_jobs=1,  # Force single-threaded to avoid threading issues
-        verbose=False
+        verbose=False,
+        low_memory=True,  # Use low memory mode to reduce threading
+        force_approximation_algorithm=True  # Use approximation to avoid threading
     )
     
-    embedding_3d = reducer.fit_transform(X)
+    try:
+        embedding_3d = reducer.fit_transform(X)
+    except Exception as e:
+        print(f"UMAP error: {e}")
+        # Fallback: use simple PCA or random positioning
+        from sklearn.decomposition import PCA
+        try:
+            pca = PCA(n_components=3, random_state=42)
+            embedding_3d = pca.fit_transform(X)
+            print("Using PCA fallback for 3D visualization")
+        except Exception as pca_error:
+            print(f"PCA fallback failed: {pca_error}")
+            # Last resort: random positioning
+            embedding_3d = np.random.randn(len(X), 3) * 0.1
+            print("Using random positioning fallback")
     
     # Convert to list format for JSON
     points = []
@@ -440,7 +473,8 @@ def get_3d_visualization():
             'z': float(z),
             'word': word,
             'is_mix': word == "🎯 CURRENT MIX",
-            'is_base': word == base_word
+            'is_base': word == base_word,
+            'is_neighbor': word in neighbor_words
         })
     
     return jsonify({
@@ -462,6 +496,7 @@ def get_3d_visualization_progressive():
     use_fast_positioning = data.get('use_fast_positioning', True)  # Use fast positioning instead of UMAP
     neighbor_words = data.get('neighbor_words', [])  # List of words that are nearest neighbors
     
+    
     if model is None:
         return jsonify({'error': 'No model loaded'}), 400
     
@@ -472,10 +507,10 @@ def get_3d_visualization_progressive():
     neighbor_key = "_".join(sorted(neighbor_words)) if neighbor_words else "no_neighbors"
     cache_key = f"{model_choice}_{base_word}_{neighbor_key}"
     
-    # Debug: Log cache key and neighbor words
-    print(f"DEBUG: Cache key: {cache_key}")
-    print(f"DEBUG: Neighbor words: {neighbor_words}")
-    print(f"DEBUG: Base word: {base_word}")
+    # Log cache key and neighbor words for debugging
+    print(f"Cache key: {cache_key}")
+    print(f"Neighbor words: {neighbor_words}")
+    print(f"Base word: {base_word}")
     
     # Check if we have cached UMAP coordinates for this base word
     if cache_key not in visualization_cache:
@@ -484,8 +519,13 @@ def get_3d_visualization_progressive():
         
         if len(local_words) < 10:
             # Fallback: use just the base word and its nearest neighbors
-            neighbors = model.nearest(model.model[base_word], topn=200)
-            local_words = [word for word, _ in neighbors]
+            try:
+                neighbors = model.nearest(model.model[base_word], topn=200)
+                local_words = [word for word, _ in neighbors]
+            except Exception as e:
+                print(f"Fallback failed: {e}")
+                # Last resort: just use the base word
+                local_words = [base_word]
         
         # Ensure neighbor words are included in the visualization
         if neighbor_words:
@@ -519,7 +559,7 @@ def get_3d_visualization_progressive():
             X = np.vstack([X, mixed_array.reshape(1, -1)])
             word_labels.append("🎯 CURRENT MIX")
         
-        # Compute UMAP embedding with threading fixes
+        # Compute UMAP embedding with aggressive threading fixes
         reducer = umap.UMAP(
             n_components=3,
             n_neighbors=UMAP_N_NEIGHBORS,
@@ -527,10 +567,26 @@ def get_3d_visualization_progressive():
             metric=UMAP_METRIC,
             random_state=42,
             n_jobs=1,  # Force single-threaded to avoid threading issues
-            verbose=False
+            verbose=False,
+            low_memory=True,  # Use low memory mode to reduce threading
+            force_approximation_algorithm=True  # Use approximation to avoid threading
         )
         
-        embedding_3d = reducer.fit_transform(X)
+        try:
+            embedding_3d = reducer.fit_transform(X)
+        except Exception as e:
+            print(f"UMAP error: {e}")
+            # Fallback: use simple PCA or random positioning
+            from sklearn.decomposition import PCA
+            try:
+                pca = PCA(n_components=3, random_state=42)
+                embedding_3d = pca.fit_transform(X)
+                print("Using PCA fallback for 3D visualization")
+            except Exception as pca_error:
+                print(f"PCA fallback failed: {pca_error}")
+                # Last resort: random positioning
+                embedding_3d = np.random.randn(len(X), 3) * 0.1
+                print("Using random positioning fallback")
         
         # Convert to list format and cache
         all_points = []
@@ -547,10 +603,10 @@ def get_3d_visualization_progressive():
         # Center the base word at origin (0,0,0) and adjust all other points relative to it
         if base_word_position is not None:
             base_x, base_y, base_z = base_word_position
-            print(f"DEBUG: Centering base word '{base_word}' at origin, was at ({base_x:.3f}, {base_y:.3f}, {base_z:.3f})")
+            print(f"Centering base word '{base_word}' at origin, was at ({base_x:.3f}, {base_y:.3f}, {base_z:.3f})")
         else:
             base_x, base_y, base_z = 0, 0, 0
-            print(f"DEBUG: Warning - base word '{base_word}' not found in embedding!")
+            print(f"Warning - base word '{base_word}' not found in embedding!")
         
         for i, (x, y, z) in enumerate(embedding_3d):
             word = word_labels[i]
@@ -568,6 +624,7 @@ def get_3d_visualization_progressive():
                 'is_base': word == base_word,
                 'is_neighbor': word in neighbor_words
             })
+            
         
         # Cache the computed points
         visualization_cache[cache_key] = {
@@ -673,4 +730,4 @@ if __name__ == '__main__':
         print("You can load a model through the web interface.")
     
     print("🚀 Starting Flask server on http://localhost:5801")
-    app.run(debug=True, host='0.0.0.0', port=5801)
+    app.run(debug=True, host='0.0.0.0', port=5801, threaded=False, processes=1)

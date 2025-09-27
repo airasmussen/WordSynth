@@ -6,14 +6,23 @@ performing weighted vector arithmetic, and finding nearest neighbors with
 optional FAISS acceleration.
 """
 
+import os
+# Set conservative threading configuration to avoid conflicts
+os.environ['NUMBA_NUM_THREADS'] = '1'  # Force single-threaded Numba
+os.environ['NUMBA_THREADING_LAYER'] = 'omp'  # Use OpenMP threading layer
+os.environ['OMP_NUM_THREADS'] = '1'  # Limit OpenMP threads
+os.environ['MKL_NUM_THREADS'] = '1'  # Limit Intel MKL threads
+os.environ['OPENBLAS_NUM_THREADS'] = '1'  # Limit OpenBLAS threads
+
 import numpy as np
 from typing import List, Tuple, Optional, Set, Iterable
 from gensim.models import KeyedVectors
-import os
 
+# Re-enable FAISS for better performance
+FAISS_AVAILABLE = False
 try:
     import faiss
-    FAISS_AVAILABLE = True
+    FAISS_AVAILABLE = True  # Re-enabled FAISS
 except ImportError:
     FAISS_AVAILABLE = False
 
@@ -212,31 +221,20 @@ class SynthModel:
     def _nearest_gensim(self, vector: np.ndarray, topn: int, 
                        exclude: Set[str]) -> List[Tuple[str, float]]:
         """Find nearest neighbors using gensim fallback."""
-        # Gensim expects the vector to be in the model's vocabulary
-        # We'll use most_similar with a temporary vector
+        # Use gensim's similarity calculation directly
         try:
-            # Create a temporary key for the vector
-            temp_key = "__temp_vector__"
-            self.model.add_vector(temp_key, vector)
-            
-            # Get similarities
-            similarities = self.model.most_similar(
-                positive=[temp_key], 
-                topn=topn * 2  # Get more to account for exclusions
-            )
-            
-            # Remove temporary vector
-            self.model.pop(temp_key)
-            
-            # Filter exclusions
-            results = []
-            for word, score in similarities:
+            # Calculate similarities with all vectors
+            similarities = []
+            for word in self.model.key_to_index:
                 if word not in exclude:
-                    results.append((word, score))
-                    if len(results) >= topn:
-                        break
+                    # Calculate cosine similarity
+                    word_vector = self.model[word]
+                    similarity = np.dot(vector, word_vector) / (np.linalg.norm(vector) * np.linalg.norm(word_vector))
+                    similarities.append((word, float(similarity)))
             
-            return results
+            # Sort by similarity (descending) and return topn
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            return similarities[:topn]
             
         except Exception as e:
             print(f"Gensim similarity search failed: {e}")
@@ -260,11 +258,14 @@ class SynthModel:
         all_neighbors = set()
         for anchor in anchors:
             if anchor in self.vocab:
-                neighbors = self.nearest(self.model[anchor], topn=k//len(anchors))
-                # Only add words that are actually in the vocabulary
-                for word, _ in neighbors:
-                    if word in self.vocab:
-                        all_neighbors.add(word)
+                try:
+                    neighbors = self.nearest(self.model[anchor], topn=k//len(anchors))
+                    # Only add words that are actually in the vocabulary
+                    for word, _ in neighbors:
+                        if word in self.vocab:
+                            all_neighbors.add(word)
+                except Exception as e:
+                    print(f"Error getting neighbors for '{anchor}': {e}")
         
         # Add anchors themselves (only if they're in vocab)
         for anchor in anchors:

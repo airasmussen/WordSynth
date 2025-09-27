@@ -5,3 +5,4 @@ umap-learn
 pandas
 gensim
 faiss-cpu
+scikit-learn

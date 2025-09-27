@@ -120,13 +120,14 @@ class WordSynthAPI {
     /**
      * Get 3D visualization data using UMAP
      */
-    async get3DVisualization(baseWord, mixedVector = null, rebuild = false) {
+    async get3DVisualization(baseWord, mixedVector = null, rebuild = false, neighborWords = []) {
         return await this.request('/api/visualization/3d', {
             method: 'POST',
             body: JSON.stringify({
                 base_word: baseWord,
                 mixed_vector: mixedVector,
-                rebuild
+                rebuild,
+                neighbor_words: neighborWords
             })
         });
     }

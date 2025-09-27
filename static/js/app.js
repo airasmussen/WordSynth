@@ -52,9 +52,29 @@ class WordSynthApp {
             this.loadModel(e.target.value);
         });
 
-        // Base word input
-        document.getElementById('baseWordInput').addEventListener('input', (e) => {
-            this.handleBaseWordChange(e.target.value);
+        // Base word input - only validate on Enter or after user stops typing
+        const baseWordInput = document.getElementById('baseWordInput');
+        
+        // Handle Enter key
+        baseWordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.handleBaseWordChange(e.target.value);
+            }
+        });
+        
+        // Handle input with debounce (only after user stops typing for 1 second)
+        let inputTimeout = null;
+        baseWordInput.addEventListener('input', (e) => {
+            // Clear previous timeout
+            if (inputTimeout) {
+                clearTimeout(inputTimeout);
+            }
+            
+            // Set new timeout
+            inputTimeout = setTimeout(() => {
+                this.handleBaseWordChange(e.target.value);
+            }, 1000); // 1 second delay
         });
 
         // Visualization options
