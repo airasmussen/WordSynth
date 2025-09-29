@@ -82,9 +82,6 @@ class WordSynthApp {
             this.toggle3DVisualization(e.target.checked);
         });
 
-        document.getElementById('enableSpeech').addEventListener('change', (e) => {
-            this.toggleSpeech(e.target.checked);
-        });
 
         document.getElementById('progressiveLoading').addEventListener('change', (e) => {
             // If 3D is enabled and we're switching modes, reload the visualization
@@ -163,12 +160,6 @@ class WordSynthApp {
             }
         });
 
-        // Hover handler for text-to-speech
-        window.vizManager.setHoverHandler((word) => {
-            if (document.getElementById('enableSpeech').checked) {
-                this.speakWord(word);
-            }
-        });
     }
 
     /**
@@ -726,13 +717,6 @@ class WordSynthApp {
         }
     }
 
-    /**
-     * Toggle speech synthesis
-     */
-    toggleSpeech(enable) {
-        // Speech is handled in the hover handler
-        console.log('Speech synthesis:', enable ? 'enabled' : 'disabled');
-    }
 
     /**
      * Toggle look around feature
@@ -1047,18 +1031,6 @@ class WordSynthApp {
         window.URL.revokeObjectURL(url);
     }
 
-    /**
-     * Speak a word using text-to-speech
-     */
-    speakWord(word) {
-        if ('speechSynthesis' in window && word) {
-            const utterance = new SpeechSynthesisUtterance(word);
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.volume = 1.0;
-            speechSynthesis.speak(utterance);
-        }
-    }
 
     /**
      * Update slider value display

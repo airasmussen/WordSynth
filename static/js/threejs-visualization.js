@@ -1232,17 +1232,6 @@ class ThreeJSVisualization {
         this.hoverHandler = handler;
     }
 
-    /**
-     * Speak word on hover
-     */
-    speakWord(word) {
-        if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(word);
-            utterance.rate = 0.8;
-            utterance.pitch = 1.0;
-            speechSynthesis.speak(utterance);
-        }
-    }
 
     /**
      * Animation loop
