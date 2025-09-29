@@ -440,9 +440,8 @@ class WordSynthApp {
             
             return `
                 <div class="mixing-control">
-                    <h4>${word || 'Empty'}</h4>
                     <input type="text" 
-                           class="control-input" 
+                           class="control-input mixing-word-input" 
                            value="${word}" 
                            placeholder="Enter word..."
                            data-index="${index}">
